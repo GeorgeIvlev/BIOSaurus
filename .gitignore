@@ -1,0 +1,34 @@
+# Ignore build output and temporary files
+/build/
+*.o
+*.obj
+*.exe
+*.bin
+*.out
+*.elf
+*.map
+*.lst
+*.log
+*.tmp
+*.d
+*.mod
+*.a
+*.so
+*.dll
+*.lib
+
+# Editor/project files
+*.swp
+*.swo
+*~
+*.user
+*.sdf
+*.suo
+*.db
+*.VC.db
+*.vscode/
+.DS_Store
+Thumbs.db
+
+# Ignore ctags and similar meta files
+tags

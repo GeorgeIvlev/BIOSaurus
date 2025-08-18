@@ -1,0 +1,17 @@
+# Set default text file handling
+* text=auto
+
+# C source and header files
+*.c  text diff=cpp
+*.h  text diff=cpp
+
+# NASM files (treat as assembly)
+*.asm text diff=as
+
+# Mark binary files
+*.bin binary
+*.exe binary
+
+# End of line normalization for scripts
+*.sh text eol=lf
+*.bat text eol=crlf
