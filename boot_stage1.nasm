@@ -1,58 +1,31 @@
-org 0x7C00
+[org 0x7C00]
 
-bits 16
-
+[bits 16]
 jmp start
 
 %include "print16.nasm"
 ; %include "gdt.nasm"
-
 ; --------------------
-; GDT for PM (unused right now)
-gdt_start:
-    dq 0x0000000000000000
-    dq 0x00CF9A000000FFFF
-    dq 0x00CF92000000FFFF
-gdt_end:
-
-gdt_descriptor:
-    dw gdt_end - gdt_start - 1
-    dd gdt_start
-
-CODE_SEL equ 0x08
-DATA_SEL equ 0x10
-
 start:
-    ; Clear screen
-    mov ah, 0x00
-    mov al, 0x03
+    ; Set text mode 80x25 color
+    mov ax, 0x03
     int 0x10
-
-    ; vga=0x365 - 1920x1080 8-bit color
-    ; vga=0x366 - 1920x1080 16-bit color
-    ; vga=0x367 - 1920x1080 32-bit color
-
-    mov eax, 0x0000          ; DS is 0x0000 in your setup
-    mov ax, cs               ; Get code segment
-    shl eax, 4               ; Convert to physical address
-    add eax, gdt_start       ; Add GDT offset
-    mov [gdt_descriptor + 2], eax
-
-    lgdt [gdt_descriptor]
 
     ; Stack/Data reset
     cli
-    mov ax, 0x0000
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
     mov ss, ax
-    mov sp, 0x8000
+    mov sp, 0x7BFE    ; Stack grows down from bootloader
     sti
 
     ; Save boot drive address
     mov [boot_drive], dl
 
-    call    enable_a20_fast
+    call enable_a20_fast
 
-    ; Print hello
+    ; Print 'Loading...'
     mov si, msg
     call print16
 
@@ -66,6 +39,9 @@ start:
     je from_floppy         ; jump if equal
 
     jmp unknown_drive
+
+stage2_start_marker:
+    db "B"  ; Marker byte
 
 from_hdd:
     ; code for HDD boot here
@@ -81,76 +57,67 @@ from_floppy:
 unknown_drive:
     mov si, msg_unknown
     call print16
-    jmp $
+    jmp hang
 
 continue_boot:
     mov ah, 0x41
     mov bx, 0x55AA
     mov dl, [boot_drive]
     int 0x13
-    jc disk_error
-    cmp bx, 0xAA55
-    jne disk_error
+    ; jc no_lba_support
+    ; cmp bx, 0xAA55
+    ; jne no_lba_support
 
+    ; Print LBA support confirmed
+    ; mov si, msg_lba_ok
+    ; call print16
     ; ----------------------------------------------------
     ; Load Stage2 to 0x0800:0x0000 (0x8000 phys)
     ; ----------------------------------------------------
-    ; mov ax, cs
-    ; mov es, ax
-
     mov si, dap_stage2
     mov ah, 0x42
     mov dl, [boot_drive]
     int 0x13
-    jc disk_error
+    jc stage2_error
+
+    ; Print Stage 2 loaded successfully
+    mov si, msg_stage2_ok
+    call print16
     ; ----------------------------------------------------
     ; Load Kernel to 0x100000 (1MB)
-    ; Here we load e.g. 128 sectors (64KB). Adjust count.
     ; ----------------------------------------------------
     mov si, dap_kernel
     mov ah, 0x42
     mov dl, [boot_drive]
     int 0x13
-    jc disk_error
+    jc kernel_error
 
-    ; Clear screen
-    mov ah, 0x00
-    mov al, 0x03
-    int 0x10
+    ; Print kernel loaded successfully
+    mov si, msg_kernel_ok
+    call print16
 
-    ; Switch to PM
-    cli
-    lgdt [gdt_descriptor]
-    mov eax, cr0
-    or eax, 1
-    mov cr0, eax
-    ; Far jump to Stage2 as PM code
-    jmp dword CODE_SEL:0x8000
+    ; Success - jump to Stage 2
+    mov si, msg_jumping
+    call print16
 
-; Disk Address Packet (DAP)
-align 16
-dap_stage2:
-    db 0x10
-    db 0
-    dw 1                  ; Stage2 = 1 sector
-    dw 0x0000
-    dw 0x0800             ; load @ 0x8000
-    dq 1                  ; LBA 1 (sector 2 on disk)
+    jmp 0x0800:0x0000
 
-    ; size
-    ; reserved
-    ; sector count
-    ; offset
-    ; segment (0x0800:0x0000 = 0x8000 physical)
-    ; LBA start (sector 2 on disk)
-align 16
-dap_kernel:
-    db 0x10
-    db 0
-    dw 1              ; number of sectors (adjust to kernel size!)
-    dw 0x0000           ; offset
-    dw 0x1000           ; segment (0x1000:0 = 0x10000 physical)
-    dq 2                ; starting LBA (after Stage2)
+no_lba_support:
+    mov si, msg_no_lba
+    call print16
+    jmp hang
+
+stage2_error:
+    mov si, msg_stage2_err
+    call print16
+    mov al, ah            ; BIOS error code is in AH after int 0x13
+    call print_hex8
+    jmp hang
+
+kernel_error:
+    mov si, msg_kernel_ok
+    call print16
+    jmp hang
 
 disk_error:
     mov si, msg_disk_err
@@ -163,17 +130,44 @@ disk_error:
 ; ------------------------------- A20 enable ---------------------------------
 ; Fast A20 via port 0x92 (System Control Port A)
 enable_a20_fast:
-    in      al, 0x92
-    or      al, 2       ; set A20
-    out     0x92, al
+    in al, 0x92
+    or al, 00000010b    ; Set bit 1 (A20 enable)
+    and al, 11111101b   ; Clear bit 2 (don't reset CPU)
+    out 0x92, al
     ret
 ; --------------------
 hang:
     jmp hang
 
-msg db "...Loading", 0
+; Disk Address Packet (DAP)
+dap_stage2:
+    db 0x10
+    db 0
+    dw 4                  ; sectors to read
+    dw 0x0000             ; offset
+    dw 0x0800             ; segment
+    dd 1, 0               ; LBA (64-bit, little endian)
+
+dap_kernel:
+    db 0x10
+    db 0  
+    dw 1                  ; sectors to read (adjust as needed) 512 bytes each
+    dw 0x0000             ; offset
+    dw 0x5000            ; segment
+    dd 5, 0               ; LBA (64-bit, little endian)
+
+; Messages
+msg db "Stage 1: Loading...", 13, 10, 0
 msg_disk_err db "Disk load error!", 0
-msg_unknown db "Unknown boot device!", 0
+msg_lba_ok db "LBA support OK", 13, 10, 0
+msg_stage2_ok db "Stage 2 loaded", 13, 10, 0
+msg_kernel_ok db "Kernel loaded", 13, 10, 0
+msg_jumping db "Jumping to Stage 2...", 13, 10, 0
+msg_stage2_err db "Stage 2 load error: ", 0
+msg_kernel_err db "Kernel load error: ", 0
+msg_unknown db "Unknown boot device!", 13, 10, 0
+msg_no_lba db "No LBA support!", 13, 10, 0
+msg_byte_is db "First byte is: ", 0
 boot_drive: db 0x80
 
 times 510-($-$$) db 0

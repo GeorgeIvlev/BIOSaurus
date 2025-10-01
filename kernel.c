@@ -1,59 +1,35 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define VGA_ADDRESS 0xB8000
-#define VGA_WIDTH   80
-#define VGA_HEIGHT  25
-
-static volatile uint16_t* const VGA_BUFFER = (uint16_t*)VGA_ADDRESS;
-
-static size_t cursor_row = 0;
-static size_t cursor_col = 0;
-static uint8_t vga_color = 0x1F; // white on blue
-
-// Encode a character + color into VGA cell
-static inline uint16_t vga_entry(char c, uint8_t color) {
-    return (uint16_t)c | ((uint16_t)color << 8);
-}
-
-void vga_clear() {
-    for (size_t y = 0; y < VGA_HEIGHT; y++) {
-        for (size_t x = 0; x < VGA_WIDTH; x++) {
-            VGA_BUFFER[y * VGA_WIDTH + x] = vga_entry(' ', vga_color);
-        }
-    }
-    cursor_row = 0;
-    cursor_col = 0;
-}
-
-void vga_putc(char c) {
-    if (c == '\n') {
-        cursor_row++;
-        cursor_col = 0;
-    } else {
-        VGA_BUFFER[cursor_row * VGA_WIDTH + cursor_col] = vga_entry(c, vga_color);
-        cursor_col++;
-        if (cursor_col >= VGA_WIDTH) {
-            cursor_col = 0;
-            cursor_row++;
-        }
-    }
-
-    if (cursor_row >= VGA_HEIGHT) {
-        cursor_row = 0; // wrap around (simple for now)
-    }
-}
-
-void vga_print(const char* str) {
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        vga_putc(str[i]);
-    }
-}
-
-__attribute__((section(".text.entry")))
-void _kernel() {
-    vga_clear();
-    volatile unsigned short* vga = (unsigned short*)0xB8000;
-    vga[0] = 0x1F4B; vga[1] = 0x1F21; // "K!"
-    // vga_print("X");
+__attribute__((noreturn))
+void _kernel(void) {
+    __asm__ volatile(
+        // Clear entire screen (2000 characters)
+        "movq $0xB8000, %%rdi\n"
+        "movw $0x0F20, %%ax\n"      // Space with white on black attribute
+        "movl $2000, %%ecx\n"
+        "rep stosw\n"
+        
+        // Write "Hello World!" at top-left
+        "movq $0xB8000, %%rax\n"
+        "movw $0x0F48, (%%rax)\n"       // 'H'
+        "movw $0x0F65, 2(%%rax)\n"      // 'e'
+        "movw $0x0F6C, 4(%%rax)\n"      // 'l'
+        "movw $0x0F6C, 6(%%rax)\n"      // 'l'
+        "movw $0x0F6F, 8(%%rax)\n"      // 'o'
+        "movw $0x0F20, 10(%%rax)\n"     // ' '
+        "movw $0x0F57, 12(%%rax)\n"     // 'W'
+        "movw $0x0F6F, 14(%%rax)\n"     // 'o'
+        "movw $0x0F72, 16(%%rax)\n"     // 'r'
+        "movw $0x0F6C, 18(%%rax)\n"     // 'l'
+        "movw $0x0F64, 20(%%rax)\n"     // 'd'
+        "movw $0x0F21, 22(%%rax)\n"     // '!'
+        
+        "cli\n"
+        "1: hlt\n"
+        "jmp 1b\n"
+        :
+        :
+        : "rax", "rdi", "rcx", "memory"
+    );
 }

@@ -2,25 +2,28 @@ ENTRY(_kernel)
 
 SECTIONS {
     . = 0x00100000;
-    .text.entry : {
-        *(.text.entry)  /* Only _kernel here */
-    }
+    
     .text : {
-        *(.text*)       /* Other functions */
+        *(.text._kernel)  /* Force _kernel to be first */
+        *(.text*)
     }
-    .rodata : {
+    
+    .rodata : ALIGN(4096) {
         *(.rodata*)
     }
-    __DATA_START = .;
-    .data : {
-        *(.data)
+    
+    .data : ALIGN(4096) {
+        *(.data*)
     }
-    __DATA_END = .;
-    __DATA_SIZE = __DATA_END - __DATA_START;  /* ADD THIS */
-    __BSS_START = .;
-    .bss : {
+    
+    .bss : ALIGN(4096) {
+        *(.bss*)
         *(COMMON)
-        *(.bss)
     }
-    __BSS_END = .;
+    
+    /DISCARD/ : {
+        *(.note*)
+        *(.comment*)
+        *(.eh_frame*)
+    }
 }

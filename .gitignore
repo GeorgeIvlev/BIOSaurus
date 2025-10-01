@@ -1,5 +1,6 @@
 # Ignore build output and temporary files
 /build/
+/bin/
 *.o
 *.obj
 *.exe
