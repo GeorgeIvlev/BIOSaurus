@@ -1,22 +1,24 @@
-# BIOSaurus
+# BIOSaurus 🦖
 
 A minimal 64-bit x86 kernel written in C and Assembly.  
-It boots from a custom stage1 + stage2 bootloader, switches the CPU into long mode, and jumps into a freestanding C kernel with VGA text output.  
+It boots from a custom stage1 + stage2 bootloader, switches the CPU into long mode, and jumps into a freestanding C kernel.  
 
 ---
 
 ## ✨ Features
 
 - Stage 1 boot sector (512 bytes) to load stage 2  
-- Stage 2 bootloader:
+- Stage 2 bootloader ( 2048 bytes fixed ):
   - Switches to protected mode → long mode (x86_64)  
   - Sets up page tables and GDT  
   - Copies kernel binary into memory at `0x00100000`  
   - Clears `.bss` before calling the kernel entry  
-- Freestanding C kernel:
-  - Writes directly to VGA text buffer at `0xB8000`  
-  - Minimal VGA console with `clear`, `putc`, `print`  
-  - Example kernel entry (`_kernel`) printing `"Hello, kernel world!"`
+- Basic C kernel:
+  - Writes directly to VGA text buffer at `0xB8000`
+  - Example kernel entry (`_kernel`)
+  - Basic interrupts implementation
+  - Basic support for PIC keyboard driver and PIC mouse driver ( not working right now )
+  - Switch to VGA pixel mode ( 320x200 ) with bytes send to gpu registers
 
 ---
 
@@ -38,13 +40,31 @@ make
 This produces:
 
 ```
-bin/os-image.bin   # final bootable image
+build/os-image.img   # final bootable image
 ```
 
-Run with QEMU:
+Run with QEMU ( builds all automatically ):
 
 ```sh
 make run
+```
+
+Build kernel ( C code ) only:
+
+```sh
+make kernel
+```
+
+Run with QEMU development mode:
+
+```sh
+make run-dev
+```
+
+Run with QEMU debug mode ( gdb can connect ):
+
+```sh
+make debug
 ```
 
 Clean build artifacts:
@@ -59,29 +79,10 @@ make clean
 
 ```
 .
-├── boot_stage1.nasm     # Stage 1 boot sector (MBR)
-├── boot_stage2.nasm     # Stage 2 loader (protected → long mode, loads kernel)
-├── kernel.c             # C kernel code (VGA text printing)
+├── boot/stage1.nasm     # Stage 1 boot sector (MBR)
+├── boot/stage2.nasm     # Stage 2 loader (protected → long mode, loads kernel)
+├── kernel/entry.c       # C kernel etry code
 ├── linker.ld            # Kernel linker script (load at 0x00100000)
 ├── Makefile             # Build system
-└── bin/                 # Build outputs
+└── build/               # Build outputs
 ```
-
----
-
-## ⚙️ Technical Notes
-
-- Kernel is linked to load at `0x00100000` (1 MB).  
-- VGA text mode uses 80×25 characters, each cell = `char + attribute` at `0xB8000`.  
-- Entry point `_kernel` is called after `.bss` is zeroed.  
-- Stack is set up at `0x90000` (aligned 16 bytes).  
-- Paging maps the first 2 MB with 2 MB pages (identity mapping).  
-
----
-
-## 🚀 Next Steps
-
-- Implement scrolling in VGA console  
-- Add keyboard input driver (from PS/2)  
-- Replace raw binary loading with ELF parser in stage2  
-- Implement simple memory allocator  
